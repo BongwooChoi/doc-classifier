@@ -1,0 +1,11 @@
+path: /mnt/c/Users/bongw/OneDrive/N드라이브/Study/문서분류기/data/yolo_dataset
+train: images/train
+val: images/val
+
+names:
+  0: stamp
+  1: signature
+  2: table
+  3: barcode
+  4: qrcode
+  5: hospital_logo

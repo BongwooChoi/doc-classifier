@@ -1,0 +1,84 @@
+# 문서분류기 설정 파일
+
+# 문서 분류 카테고리
+document_classes:
+  - 진단서
+  - 소견서
+  - 보험금청구서
+  - 입퇴원확인서
+  - 의료비영수증
+  - 처방전
+
+# Step 1: YOLO 설정
+yolo:
+  model_path: "data/models/yolo_document_layout/weights/best.pt"
+  pretrained: "yolov8n.pt"  # 사전학습 모델
+  confidence_threshold: 0.5
+  iou_threshold: 0.45
+  image_size: 640
+  detection_classes:
+    - stamp
+    - signature
+    - table
+    - barcode
+    - qrcode
+    - hospital_logo
+
+# Step 2: LayoutLM 설정
+layoutlm:
+  model_name: "microsoft/layoutlmv3-base"
+  model_path: "data/models/layoutlm_classifier/best"
+  max_seq_length: 512
+  confidence_threshold: 0.7  # 이 값 미만이면 Step 3으로 전달
+  apply_ocr: false  # 별도 OCR 처리 사용
+
+# Step 3: VLM 설정
+vlm:
+  provider: "openai"  # openai 또는 anthropic
+  openai:
+    model: "gpt-4o"
+    max_tokens: 500
+  anthropic:
+    model: "claude-3-5-sonnet-20241022"
+    max_tokens: 500
+
+# OCR 설정
+ocr:
+  engine: "easyocr"  # paddleocr 또는 easyocr
+  language: "korean"
+  use_gpu: false
+
+# 전처리 설정
+preprocessing:
+  deskew:
+    enabled: true
+    max_angle: 15
+  document_detection:
+    enabled: true
+    min_area_ratio: 0.3
+
+# 로깅 설정
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/document_classifier.log"
+
+# 학습 설정
+training:
+  yolo:
+    epochs: 100
+    batch_size: 16
+    learning_rate: 0.01
+    data_yaml: "data/annotations/yolo_data.yaml"
+  layoutlm:
+    epochs: 10
+    batch_size: 8
+    learning_rate: 2e-5
+    warmup_ratio: 0.1
+
+# 경로 설정
+paths:
+  raw_data: "data/raw"
+  processed_data: "data/processed"
+  annotations: "data/annotations"
+  models: "data/models"
