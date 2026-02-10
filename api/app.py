@@ -71,6 +71,7 @@ yolo_detector = None
 yolo_classifier = None
 layoutlm_model = None
 layoutlm_processor = None
+ocr_processor = None  # EasyOCR 프로세서 캐싱
 
 
 class ClassificationResponse(BaseModel):
@@ -274,13 +275,25 @@ async def classify_document(
                     doc_class = predicted_class if predicted_class != "unknown" else "진단서"
                 words, boxes = generate_mock_ocr_text(doc_class)
             else:
-                # 실제 OCR 사용 (EasyOCR)
+                # 실제 OCR 사용 (EasyOCR) - 전역 캐싱된 프로세서 사용
+                global ocr_processor
                 try:
-                    from src.step2_layoutlm.ocr import OCRProcessor
-                    ocr = OCRProcessor(engine="easyocr", language="korean", use_gpu=False)
-                    ocr_result = ocr.prepare_layoutlm_input(image)
+                    if ocr_processor is None:
+                        from src.step2_layoutlm.ocr import OCRProcessor
+                        ocr_processor = OCRProcessor(engine="easyocr", language="korean", use_gpu=False)
+                        print("EasyOCR 프로세서 초기화 완료 (캐싱됨)")
+                    ocr_result = ocr_processor.prepare_layoutlm_input(image)
                     words = ocr_result["words"]
                     boxes = ocr_result["boxes"]
+
+                    # OCR 결과가 비어있는 경우 처리
+                    if not words:
+                        raise HTTPException(
+                            status_code=422,
+                            detail="OCR에서 텍스트를 검출하지 못했습니다. 이미지 품질을 확인해주세요."
+                        )
+                except HTTPException:
+                    raise
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=f"OCR 처리 오류: {str(e)}")
 
