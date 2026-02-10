@@ -8,7 +8,7 @@
 1. [사전 준비 (인터넷 환경에서)](#1-사전-준비-인터넷-환경에서)
 2. [폐쇄망으로 파일 이동](#2-폐쇄망으로-파일-이동)
 3. [폐쇄망에서 설치](#3-폐쇄망에서-설치)
-4. [데이터셋 생성](#4-데이터셋-생성)
+4. [실제 데이터 준비](#4-실제-데이터-준비)
 5. [모델 학습](#5-모델-학습)
 6. [테스트 및 검증](#6-테스트-및-검증)
 7. [API 서버 실행](#7-api-서버-실행)
@@ -231,57 +231,127 @@ cp -r offline_models/easyocr/* ~/.EasyOCR/model/
 
 ---
 
-## 4. 데이터셋 생성
+## 4. 실제 데이터 준비
 
-### 4.1 샘플 데이터 생성
+폐쇄망에서는 합성 데이터가 아닌 **실제 의료/보험 문서 이미지**를 사용합니다.
 
-```bash
-# 샘플 이미지 및 어노테이션 생성
-python3 scripts/generate_sample_data.py
-```
+### 4.1 필요한 문서 유형 (6종)
 
-**출력 확인:**
-```
-data/sample/
-├── train/
-│   ├── images/      # 48개 이미지 (6종 × 8개)
-│   ├── annotations/ # 48개 JSON
-│   └── labels.tsv
-└── test/
-    ├── images/      # 12개 이미지 (6종 × 2개)
-    ├── annotations/ # 12개 JSON
-    └── labels.tsv
-```
+| 번호 | 문서 유형 | 파일명 prefix | 권장 수량 (최소) |
+|:----:|----------|--------------|:---------------:|
+| 1 | 진단서 | `diagnosis_` | 50장 이상 |
+| 2 | 소견서 | `opinion_` | 50장 이상 |
+| 3 | 보험금청구서 | `insurance_` | 50장 이상 |
+| 4 | 입퇴원확인서 | `admission_` | 50장 이상 |
+| 5 | 의료비영수증 | `receipt_` | 50장 이상 |
+| 6 | 처방전 | `prescription_` | 50장 이상 |
 
-### 4.2 YOLO 데이터셋 생성
+> **중요**: 파일명이 문서 유형 prefix로 시작해야 합니다. LayoutLM 학습 시 파일명에서 문서 유형을 자동 추출합니다.
+
+### 4.2 이미지 파일 준비
 
 ```bash
-# YOLO 형식 데이터셋 생성
-python3 scripts/generate_yolo_dataset.py
+# 이미지 형식: JPG 또는 PNG
+# 파일명 규칙: {문서유형prefix}_{번호}.jpg
+# 예시:
+#   diagnosis_0001.jpg, diagnosis_0002.jpg, ...
+#   opinion_0001.jpg, opinion_0002.jpg, ...
+#   insurance_0001.jpg, insurance_0002.jpg, ...
 ```
 
-**출력 확인:**
-```
-data/yolo_dataset/
-├── images/
-│   ├── train/  # 300개 이미지
-│   └── val/    # 60개 이미지
-├── labels/
-│   ├── train/  # 300개 라벨
-│   └── val/    # 60개 라벨
-└── data.yaml   # YOLO 설정 파일
+### 4.3 YOLO 데이터셋 구성
+
+```bash
+# 디렉토리 구조 생성
+mkdir -p data/yolo_dataset/images/train
+mkdir -p data/yolo_dataset/images/val
+mkdir -p data/yolo_dataset/labels/train
+mkdir -p data/yolo_dataset/labels/val
 ```
 
-### 4.3 데이터 확인
+#### 4.3.1 이미지 배치
+
+문서 이미지를 train/val로 분할합니다 (권장 비율 8:2).
+
+```bash
+# 예시: 진단서 50장 중 40장은 train, 10장은 val
+cp diagnosis_0001.jpg ~ diagnosis_0040.jpg  data/yolo_dataset/images/train/
+cp diagnosis_0041.jpg ~ diagnosis_0050.jpg  data/yolo_dataset/images/val/
+# 나머지 문서 유형도 동일하게 분할
+```
+
+#### 4.3.2 YOLO 라벨 파일 작성
+
+각 이미지에 대해 문서 요소의 바운딩박스 라벨 파일(`.txt`)을 작성합니다.
+
+**YOLO 라벨 형식**: `클래스ID x_center y_center width height` (0~1 정규화 좌표)
+
+**검출 대상 클래스:**
+
+| ID | 클래스명 | 설명 |
+|----|----------|------|
+| 0 | stamp | 도장 |
+| 1 | signature | 서명 |
+| 2 | table | 테이블 |
+| 3 | barcode | 바코드 |
+| 4 | qrcode | QR코드 |
+| 5 | hospital_logo | 병원 로고 |
+
+**라벨 파일 예시** (`diagnosis_0001.txt`):
+```
+5 0.175000 0.122727 0.225000 0.045455
+1 0.662500 0.863636 0.125000 0.027273
+0 0.850000 0.836364 0.137500 0.100000
+```
+
+> **Tip**: [labelImg](https://github.com/heartexlabs/labelImg), [CVAT](https://github.com/opencv/cvat) 등의 라벨링 도구를 사용하면 편리합니다. 라벨링 도구도 사전에 오프라인으로 준비하세요.
+
+#### 4.3.3 data.yaml 작성
+
+```bash
+cat > data/yolo_dataset/data.yaml << 'EOF'
+path: data/yolo_dataset
+train: images/train
+val: images/val
+
+names:
+  0: stamp
+  1: signature
+  2: table
+  3: barcode
+  4: qrcode
+  5: hospital_logo
+EOF
+```
+
+### 4.4 데이터 확인
 
 ```bash
 # 이미지 개수 확인
 echo "Train images: $(ls data/yolo_dataset/images/train/*.jpg 2>/dev/null | wc -l)"
 echo "Val images: $(ls data/yolo_dataset/images/val/*.jpg 2>/dev/null | wc -l)"
 
+# 라벨 개수 확인 (이미지 수와 일치해야 함)
+echo "Train labels: $(ls data/yolo_dataset/labels/train/*.txt 2>/dev/null | wc -l)"
+echo "Val labels: $(ls data/yolo_dataset/labels/val/*.txt 2>/dev/null | wc -l)"
+
 # data.yaml 내용 확인
 cat data/yolo_dataset/data.yaml
 ```
+
+### 4.5 개인정보 비식별화
+
+실제 의료 문서를 사용할 경우 반드시 개인정보를 비식별화해야 합니다.
+
+| 비식별화 대상 | 처리 방법 |
+|-------------|----------|
+| 환자 성명 | 마스킹 또는 가명 처리 |
+| 주민등록번호 | 완전 삭제 또는 마스킹 |
+| 연락처 | 마스킹 |
+| 주소 | 마스킹 |
+| 의사 성명 | 가명 처리 (선택) |
+
+> **주의**: 비식별화 후에도 문서의 레이아웃 구조와 핵심 키워드(진단서, 소견서 등)는 보존되어야 모델 학습에 유효합니다.
 
 ---
 
@@ -339,6 +409,8 @@ python3 scripts/test_step1_classifier.py
 
 ### 5.4 Step 2: LayoutLM 학습
 
+LayoutLM은 **이미지 + OCR 텍스트**로 학습합니다. 학습 시 EasyOCR로 실제 텍스트를 추출하여 사용합니다.
+
 ```bash
 # LayoutLM 학습 실행 (오프라인 모델 사용)
 python3 scripts/train_layoutlm_simple.py
@@ -361,12 +433,27 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 ```
 
-**예상 소요 시간:** 40분 ~ 1시간 (CPU 기준)
+**참고: LayoutLM의 문서 유형 라벨**
+
+LayoutLM 학습 시 문서 유형은 별도의 라벨 파일 없이 **파일명에서 자동 추출**됩니다.
+
+| 파일명 prefix | 매핑되는 문서 유형 |
+|--------------|-------------------|
+| `diagnosis_` | 진단서 |
+| `opinion_` | 소견서 |
+| `insurance_` | 보험금청구서 |
+| `admission_` | 입퇴원확인서 |
+| `receipt_` | 의료비영수증 |
+| `prescription_` | 처방전 |
+
+따라서 이미지 파일명만 올바르게 지정하면 됩니다.
+
+**예상 소요 시간:** 40분 ~ 2시간 (CPU 기준, 데이터 양에 따라 상이)
 
 **학습 진행 확인:**
 ```
-Epoch 1/5: eval_accuracy=1.0
-Epoch 2/5: eval_accuracy=1.0
+Epoch 1/5: eval_accuracy=0.95
+Epoch 2/5: eval_accuracy=0.98
 ...
 Epoch 5/5: eval_accuracy=1.0
 ```
@@ -379,22 +466,16 @@ data/models/layoutlm_classifier/best/
 ### 5.5 Step 2 테스트
 
 ```bash
-# LayoutLM 분류 테스트
+# LayoutLM 분류 테스트 (Mock OCR 기반)
 python3 scripts/test_step2_layoutlm.py
+
+# 실제 OCR vs Mock OCR 비교 테스트
+python3 scripts/test_real_ocr.py
 ```
 
-**예상 결과:**
-```
-문서 유형별 정확도:
-  진단서: 10/10 (100.0%)
-  소견서: 10/10 (100.0%)    ← Step 1과 달리 정확하게 분류
-  보험금청구서: 10/10 (100.0%)
-  입퇴원확인서: 10/10 (100.0%)
-  의료비영수증: 10/10 (100.0%)
-  처방전: 10/10 (100.0%)
-
-전체 정확도: 60/60 (100.0%)
-```
+**실제 데이터에서의 예상 결과:**
+- 실제 문서는 합성 데이터보다 OCR 품질이 높아 더 나은 성능을 기대할 수 있음
+- 진단서/소견서와 같이 레이아웃이 유사한 문서도 텍스트 기반으로 정확하게 구분
 
 ---
 
@@ -467,9 +548,9 @@ python3 scripts/test_api.py
 # 헬스 체크
 curl http://localhost:8000/health
 
-# 단일 파일 분류
-curl -X POST "http://localhost:8000/classify?use_mock_ocr=true" \
-  -F "file=@data/yolo_dataset/images/val/diagnosis_0040.jpg"
+# 단일 파일 분류 (실제 OCR 사용 - 기본값)
+curl -X POST "http://localhost:8000/classify" \
+  -F "file=@data/yolo_dataset/images/val/diagnosis_0001.jpg"
 ```
 
 ### 7.4 브라우저에서 테스트
@@ -575,16 +656,21 @@ doc-classifier/
 - [ ] 오프라인 패키지 설치
 - [ ] 모델 파일 배치
 
+### 데이터 준비
+- [ ] 실제 문서 이미지 수집 (6종, 유형당 50장 이상)
+- [ ] 개인정보 비식별화
+- [ ] 파일명 규칙에 맞게 이름 변경 (`{유형prefix}_{번호}.jpg`)
+- [ ] train/val 분할 (8:2)
+- [ ] YOLO 라벨 파일 작성 (바운딩박스 어노테이션)
+
 ### 학습 및 테스트
-- [ ] 샘플 데이터 생성
-- [ ] YOLO 데이터셋 생성
 - [ ] YOLO 학습 완료
 - [ ] YOLO 테스트 통과
 - [ ] LayoutLM 학습 완료
-- [ ] LayoutLM 테스트 통과
+- [ ] 실제 OCR 테스트 통과 (`test_real_ocr.py`)
 - [ ] API 서버 실행 확인
 
 ---
 
-**작성일**: 2026-02-08
-**작성자**: Claude Opus 4.5
+**작성일**: 2026-02-10
+**작성자**: Claude Opus 4.6 (Co-authored with BongwooChoi)
