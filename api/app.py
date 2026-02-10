@@ -155,6 +155,15 @@ def load_models():
         layoutlm_model.eval()
         print(f"LayoutLM 모델 로드 완료: {layoutlm_model_path}")
 
+    # EasyOCR 로드
+    global ocr_processor
+    try:
+        from src.step2_layoutlm.ocr import OCRProcessor
+        ocr_processor = OCRProcessor(engine="easyocr", language="korean", use_gpu=False)
+        print("EasyOCR 프로세서 로드 완료")
+    except Exception as e:
+        print(f"EasyOCR 로드 실패: {e}")
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -201,7 +210,7 @@ async def get_classes():
 async def classify_document(
     file: UploadFile = File(...),
     use_mock_ocr: bool = Query(
-        True,
+        False,
         description="Mock OCR 사용 여부 (True: 파일명 기반 키워드 생성, False: 실제 OCR)"
     ),
     force_step2: bool = Query(
@@ -345,7 +354,7 @@ async def classify_document(
 @app.post("/classify/batch")
 async def classify_batch(
     files: List[UploadFile] = File(...),
-    use_mock_ocr: bool = Query(True)
+    use_mock_ocr: bool = Query(False)
 ):
     """
     여러 문서 이미지를 일괄 분류합니다.
