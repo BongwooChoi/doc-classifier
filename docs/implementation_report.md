@@ -1,6 +1,6 @@
 # 문서 분류 시스템 구현 보고서
 
-**작성일**: 2026-02-08  |  **버전**: 1.0.0
+**작성일**: 2026-02-10  |  **버전**: 1.1.0
 
 ---
 
@@ -37,7 +37,7 @@
                             ▼
 ┌───────────────────────────────────────────────────────┐
 │  Step 2: LayoutLM 정밀 분류                             │
-│  • OCR 텍스트 추출                                     │
+│  • EasyOCR 실제 텍스트 추출                             │
 │  • 텍스트 + 레이아웃 기반 정밀 분류                      │
 │  • 신뢰도 >= 0.7 → 분류 완료                           │
 └───────────────────────────────────────────────────────┘
@@ -192,9 +192,27 @@ Epoch 50/50 완료
 | 처방전 | 10/10 (100%) |
 | **전체** | **60/60 (100%)** |
 
-### 4.4 핵심 성과
+### 4.4 실제 OCR 적용 결과
+
+v1.1에서 Mock OCR 대신 EasyOCR을 적용하여 검증한 결과:
+
+| 문서 유형 | Mock OCR | Real OCR (EasyOCR) |
+|----------|----------|---------------------|
+| 진단서 | 10/10 (100%) | 10/10 (100%) |
+| 소견서 | 10/10 (100%) | 10/10 (100%) |
+| 보험금청구서 | 10/10 (100%) | 10/10 (100%) |
+| 입퇴원확인서 | 10/10 (100%) | 10/10 (100%) |
+| 의료비영수증 | 10/10 (100%) | 10/10 (100%) |
+| 처방전 | 10/10 (100%) | 10/10 (100%) |
+| **전체** | **60/60 (100%)** | **60/60 (100%)** |
+
+- Mock OCR로 학습된 모델이 실제 EasyOCR 결과에서도 동일한 100% 정확도 달성
+- EasyOCR이 합성 이미지의 한글 텍스트를 안정적으로 인식
+
+### 4.5 핵심 성과
 - **진단서/소견서 완벽 구분**: Step 1에서 구분 불가했던 두 문서 유형을 텍스트 기반으로 100% 정확하게 분류
 - **높은 신뢰도**: 대부분의 분류에서 신뢰도 0.99 이상 달성
+- **실제 OCR 호환**: Mock OCR 학습 모델이 실제 OCR 환경에서도 성능 유지
 
 ---
 
@@ -202,10 +220,10 @@ Epoch 50/50 완료
 
 | 항목 | Step 1 (YOLO) | Step 2 (LayoutLM) |
 |------|---------------|-------------------|
-| 분류 방식 | 레이아웃 요소 기반 | 텍스트 + 레이아웃 기반 |
+| 분류 방식 | 레이아웃 요소 기반 | EasyOCR 텍스트 + 레이아웃 기반 |
 | 전체 정확도 | 83.3% | 100% |
 | 진단서/소견서 구분 | 불가능 | 가능 |
-| 처리 속도 | 빠름 | 상대적으로 느림 |
+| 처리 속도 (이미지당) | ~0.1초 | ~2초 |
 | 적합한 상황 | 레이아웃이 뚜렷한 문서 | 텍스트 구분이 필요한 문서 |
 
 ---
@@ -228,26 +246,37 @@ Epoch 50/50 완료
 | `/classify/batch` | POST | 배치 문서 분류 |
 | `/docs` | GET | Swagger UI |
 
-### 6.3 분류 API 응답 예시
+### 6.3 주요 변경사항 (v1.1)
+- **실제 OCR 기본 적용**: `use_mock_ocr` 기본값이 `False`로 변경되어 EasyOCR이 기본 동작
+- **모델 프리로드**: 서버 시작 시 YOLO, LayoutLM, EasyOCR 3개 모델을 모두 로드하여 첫 요청 지연 제거
+- **OCR 프로세서 캐싱**: EasyOCR을 전역 캐싱하여 매 요청마다 재초기화 방지
+- **빈 OCR 결과 처리**: OCR에서 텍스트를 검출하지 못한 경우 422 에러 반환
+
+### 6.4 분류 API 응답 예시
 ```json
 {
-  "predicted_class": "소견서",
-  "confidence": 0.9979,
+  "predicted_class": "진단서",
+  "confidence": 0.9972,
   "final_step": 2,
-  "processing_time": 0.564,
+  "processing_time": 4.11,
   "step1_result": {
     "predicted_class": "진단서",
     "confidence": 1.0,
     "requires_step2": false
   },
   "step2_result": {
-    "predicted_class": "소견서",
-    "confidence": 0.9979,
+    "predicted_class": "진단서",
+    "confidence": 0.9972,
     "all_probabilities": {
-      "소견서": 0.9979,
-      "진단서": 0.0005,
-      ...
-    }
+      "진단서": 0.9972,
+      "소견서": 0.0008,
+      "보험금청구서": 0.0005,
+      "입퇴원확인서": 0.0006,
+      "의료비영수증": 0.0005,
+      "처방전": 0.0004
+    },
+    "ocr_words_count": 21,
+    "mock_ocr_used": false
   }
 }
 ```
@@ -275,6 +304,7 @@ Epoch 50/50 완료
 │   ├── train_layoutlm_simple.py # LayoutLM 학습
 │   ├── test_step1_classifier.py # Step 1 테스트
 │   ├── test_step2_layoutlm.py   # Step 2 테스트
+│   ├── test_real_ocr.py       # 실제 OCR vs Mock OCR 비교 테스트
 │   └── test_api.py            # API 테스트
 ├── data/
 │   ├── models/                # 학습된 모델
@@ -306,6 +336,9 @@ python scripts/test_step1_classifier.py
 # Step 2 테스트
 python scripts/test_step2_layoutlm.py
 
+# 실제 OCR vs Mock OCR 비교 테스트
+python scripts/test_real_ocr.py
+
 # API 테스트
 python scripts/test_api.py
 ```
@@ -316,7 +349,7 @@ python scripts/test_api.py
 
 ### 9.1 단기
 - [ ] Step 3 (VLM) 구현: GPT-4V 또는 Claude Vision 연동
-- [ ] 실제 OCR 적용: EasyOCR/PaddleOCR 실데이터 학습
+- [x] ~~실제 OCR 적용~~: EasyOCR 통합 완료 (v1.1), 검증셋 100% 정확도 확인
 - [ ] 전처리 파이프라인 활성화: 기울기 보정, 문서 영역 검출
 
 ### 9.2 중기
@@ -339,10 +372,20 @@ python scripts/test_api.py
 1. **YOLO 기반 레이아웃 검출**: mAP50 99.5% 달성
 2. **LayoutLM 기반 정밀 분류**: 100% 정확도 달성
 3. **진단서/소견서 구분 문제 해결**: Step 2에서 텍스트 기반 분류로 완벽 구분
-4. **REST API 제공**: FastAPI 기반 서비스 API 구현
+4. **실제 OCR 통합**: EasyOCR 적용 후에도 6종 문서 전체 100% 정확도 유지
+5. **REST API 제공**: FastAPI 기반 서비스 API 구현 (실제 OCR 기본 동작)
+
+**성능 지표:**
+| 항목 | 수치 |
+|------|------|
+| Step 1 처리 시간 | ~0.1초/이미지 |
+| Step 2 처리 시간 | ~2초/이미지 |
+| Step 1 정확도 | 83.3% (진단서/소견서 혼동) |
+| Step 2 정확도 (Mock OCR) | 100% |
+| Step 2 정확도 (Real OCR) | 100% |
 
 합성 데이터 기반으로 개발되었으므로, 실제 의료 문서 데이터로 추가 학습 시 성능 검증이 필요합니다.
 
 ---
 
-**작성자**: Claude Opus 4.5 (Co-authored with BongwooChoi)
+**작성자**: Claude Opus 4.6 (Co-authored with BongwooChoi)
