@@ -1,4 +1,4 @@
-path: /mnt/c/Users/bongw/OneDrive/N드라이브/Study/문서분류기/data/yolo_dataset
+path: data/yolo_dataset
 train: images/train
 val: images/val
 
