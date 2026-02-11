@@ -14,7 +14,7 @@ class OCRProcessor(LoggerMixin):
 
     def __init__(
         self,
-        engine: str = "paddleocr",
+        engine: str = "easyocr",
         language: str = "korean",
         use_gpu: bool = False
     ):

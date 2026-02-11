@@ -34,7 +34,7 @@
 | Step 1 검출/분류 | YOLOv8n (ultralytics) | >= 8.0.0 |
 | Step 2 정밀 분류 | LayoutLMv3 (HuggingFace) | transformers >= 4.30.0 |
 | Step 3 예외 처리 | GPT-4o / Claude 3.5 Sonnet | openai >= 1.0.0, anthropic >= 0.18.0 |
-| OCR 엔진 | PaddleOCR / EasyOCR | paddleocr >= 2.7.0 |
+| OCR 엔진 | EasyOCR (기본) / PaddleOCR | easyocr >= 1.7.0 |
 | 전처리 | OpenCV | >= 4.8.0 |
 | API 서버 | FastAPI + Uvicorn | - |
 | 언어 | Python 3.12 | - |
@@ -595,8 +595,8 @@ finally:
 | 패키지 | 이슈 |
 |--------|------|
 | `loguru>=0.7.0` | 코드에서 사용되지 않음 (표준 logging 사용) — 제거 권장 |
-| `paddleocr>=2.7.0` + `paddlepaddle>=2.5.0` | config에서 `easyocr`이 기본값이나 둘 다 설치해야 함 |
-| `easyocr>=1.7.0` | 주석 처리되어 있음 — 기본 OCR 엔진이 easyocr인데 주석 상태 |
+| `paddleocr>=2.7.0` + `paddlepaddle>=2.5.0` | EasyOCR이 기본이므로 PaddleOCR는 선택 사항으로 변경 고려 |
+| `easyocr>=1.7.0` | ✅ EasyOCR 적용 완료 — 주석 해제 필요 (requirements.txt에서 아직 주석 상태) |
 | 버전 상한 없음 | `>=` 만 사용 — 호환성 문제 발생 가능. 상한 지정 또는 lock 파일 필요 |
 | `uvicorn` 누락 | `run_api.py`에서 사용하지만 requirements.txt에 없음 |
 | `fastapi` 누락 | `api/app.py`에서 사용하지만 requirements.txt에 없음 |
@@ -734,7 +734,7 @@ finally:
 | 1 | **Step 2 실행 안 되는 문제 디버깅** — LayoutLM 모델/OCR 로드 실패 원인 파악 및 수정 | 정확도 16.7% → 100% (합성 데이터 기준) |
 | 2 | **YOLO fallback 시 경고/에러 발생**하도록 수정 — COCO 모델로 문서 분류하는 것 방지 | Silent failure 제거 |
 | 3 | **DOCUMENT_CLASSES 중앙 상수화** — 6곳 중복 제거 | 유지보수성 향상 |
-| 4 | **requirements.txt 누락 패키지 추가** (fastapi, uvicorn, scikit-learn, easyocr 주석 해제) | 신규 개발자 온보딩 |
+| 4 | **requirements.txt 누락 패키지 추가** (fastapi, uvicorn, scikit-learn) + easyocr 주석 해제 반영 | 신규 개발자 온보딩 |
 
 #### 🟡 중요 (1-2주)
 

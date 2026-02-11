@@ -12,7 +12,7 @@ datasets>=2.14.0
 # OCR
 paddleocr>=2.7.0
 paddlepaddle>=2.5.0
-# easyocr>=1.7.0  # Alternative OCR
+easyocr>=1.7.0
 
 # Image Processing
 opencv-python>=4.8.0
